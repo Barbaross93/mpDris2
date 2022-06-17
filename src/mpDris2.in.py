@@ -622,11 +622,10 @@ class MPDWrapper(object):
             "%file%": meta.get("xesam:url", "").split("/")[-1],
         }
 
-        for key, value in format_strings.items():
-            if text.find(key) > 0:
-                text = text.replace(key, value)
-
-        return text
+        substrings = sorted(format_strings, key=len, reverse=True)
+        regex = re.compile('|'.join(map(re.escape, substrings)))
+        string = regex.sub(lambda match: format_strings[match.group(0)], text)
+        return string
 
     def notify_about_track(self, meta, state="play"):
         uri = "sound"
@@ -1504,18 +1503,16 @@ if __name__ == '__main__':
             params[p] = config.getboolean("Bling", p)
 
     if config.has_option("Notify", "notify_summary"):
-        params["notify_summary"] = str(config.get("Notify", "notify_summary"))
+        params["notify_summary"] = config.get("Notify", "notify_summary", raw=True)
 
     if config.has_option("Notify", "notify_body"):
-        params["notify_body"] = str(config.get("Notify", "notify_body"))
+        params["notify_body"] = config.get("Notify", "notify_body", raw=True)
 
     if config.has_option("Notify", "notify_paused_summary"):
-        params["notify_paused_summary"] = str(
-            config.get("Notify", "notify_paused_summary")
-        )
+        params["notify_paused_summary"] = config.get("Notify", "notify_paused_summary", raw=True)
 
     if config.has_option("Notify", "notify_paused_body"):
-        params["notify_paused_body"] = str(config.get("Notify", "notify_paused_body"))
+        params["notify_paused_body"] = config.get("Notify", "notify_paused_body", raw=True)
 
     if config.has_option("Notify", "notify_timeout"):
         params["notify_timeout"] = int(config.get("Notify", "notify_timeout"))
