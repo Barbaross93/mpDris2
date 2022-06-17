@@ -49,5 +49,14 @@ Restart your session or mpDris2 after changing mpDris2.conf.
 
     [Bling]
     notify = False
+    notify_paused = True
     mmkeys = True
     cdprev = True
+
+    [Notify]
+    notify_urgency = 0
+    notify_timeout = -1
+    notify_summary =
+    notify_body =
+    notify_paused_summary =
+    notify_paused_body =

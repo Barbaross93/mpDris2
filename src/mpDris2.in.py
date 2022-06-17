@@ -70,8 +70,15 @@ params = {
     # Bling
     'mmkeys': True,
     'notify': (Notify is not None),
-    'notify_urgency': 0,
-    'cdprev': False,
+    "notify_paused": False,
+    "cdprev": False,
+    # Notify
+    "notify_summary": "",
+    "notify_body": "",
+    "notify_paused_summary": "",
+    "notify_paused_body": "",
+    "notify_urgency": 0,
+    "notify_timeout": -1,
 }
 
 defaults = {
@@ -578,28 +585,88 @@ class MPDWrapper(object):
                 logger.error("Can't cast value %r to %s" %
                              (value, allowed_tags[key]))
 
-    def notify_about_track(self, meta, state='play'):
-        uri = 'sound'
-        if 'mpris:artUrl' in meta:
-            uri = meta['mpris:artUrl']
+    def convertTimestamp(self, secs, micros):
+        seconds = 0
+        minutes = 0
+        hours = 0
+        if secs > 0:
+            seconds = int(secs % 60)
+            minutes = int((secs / 60) % 60)
+            hours = int((secs / 3600) % 24)
+        elif micros > 0:
+            seconds = int((micros / 1000000) % 60)
+            minutes = int((micros / (1000000 * 60)) % 60)
+            hours = int((micros / (1000000 * 60 * 60)) % 24)
 
-        title = 'Unknown Title'
-        if 'xesam:title' in meta:
-            title = meta['xesam:title']
-        elif 'xesam:url' in meta:
-            title = meta['xesam:url'].split('/')[-1]
+        if hours == 0:
+            duration = "{}:{:0>2}".format(minutes, seconds)
+        else:
+            duration = "{}:{}:{:0>2}".format(hours, minutes, seconds)
 
-        artist = 'Unknown Artist'
-        if 'xesam:artist' in meta:
-            artist = ", ".join(meta['xesam:artist'])
+        return duration
 
-        body = _('by %s') % artist
+    def format_notification(self, meta, text):
+        format_strings = {
+            "%album%": meta.get("xesam:album", ""),
+            "%title%": meta.get("xesam:title", ""),
+            "%id%": meta.get("mpris:trackid", "").split("/")[-1],
+            "%time%": self.convertTimestamp(0, meta.get("mpris:length", "")),
+            "%position%": self.convertTimestamp(self._position, 0),
+            "%date%": meta.get("xesam:contentCreated", ""),
+            "%track%": meta.get("xesam:trackNumber", ""),
+            "%disc%": meta.get("xesam:discNumber", ""),
+            "%artist%": ", ".join(meta.get("xesam:artist", "")),
+            "%albumartist%": ", ".join(meta.get("xesam:albumArtist", "")),
+            "%composer%": meta.get("xesam:composer", ""),
+            "%genre%": ", ".join(meta.get("xesam:genre", "")),
+            "%file%": meta.get("xesam:url", "").split("/")[-1],
+        }
 
-        if state == 'pause':
-            uri = 'media-playback-pause-symbolic'
-            body += ' (%s)' % _('Paused')
+        for key, value in format_strings.items():
+            if text.find(key) > 0:
+                text = text.replace(key, value)
 
-        notification.notify(title, body, uri)
+        return text
+
+    def notify_about_track(self, meta, state="play"):
+        uri = "sound"
+        if "mpris:artUrl" in meta:
+            uri = meta["mpris:artUrl"]
+
+        if len(self._params["notify_summary"]) > 0:
+            title = self.format_notification(meta, self._params["notify_summary"])
+        else:
+            title = "Unknown Title"
+            if "xesam:title" in meta:
+                title = meta["xesam:title"]
+            elif "xesam:url" in meta:
+                title = meta["xesam:url"].split("/")[-1]
+
+        if len(self._params["notify_body"]) > 0:
+            body = self.format_notification(meta, self._params["notify_body"])
+        else:
+            artist = "Unknown Artist"
+            if "xesam:artist" in meta:
+                artist = ", ".join(meta["xesam:artist"])
+                body = _("by %s ") % artist
+
+        if state == "pause" and self._params["notify_paused"]:
+            uri = "media-playback-pause-symbolic"
+            if len(self._params["notify_paused_summary"]) > 0:
+                title = self.format_notification(
+                    meta, self._params["notify_paused_summary"]
+                )
+
+            if len(self._params["notify_paused_body"]) > 0:
+                body = self.format_notification(
+                    meta, self._params["notify_paused_body"]
+                )
+            else:
+                body += "(%s)" % ("Paused")
+
+            notification.notify(title, body, uri)
+        elif state != "pause":
+            notification.notify(title, body, uri)
 
     def notify_about_state(self, state):
         if state == 'stop':
@@ -1432,12 +1499,29 @@ if __name__ == '__main__':
 
     params['host'] = os.path.expanduser(params['host'])
 
-    for p in ['mmkeys', 'notify', 'cdprev']:
-        if config.has_option('Bling', p):
-            params[p] = config.getboolean('Bling', p)
+    for p in ["mmkeys", "notify", "notify_paused", "cdprev"]:
+        if config.has_option("Bling", p):
+            params[p] = config.getboolean("Bling", p)
 
-    if config.has_option('Bling', 'notify_urgency'):
-        params['notify_urgency'] = int(config.get('Bling', 'notify_urgency'))
+    if config.has_option("Notify", "notify_summary"):
+        params["notify_summary"] = str(config.get("Notify", "notify_summary"))
+
+    if config.has_option("Notify", "notify_body"):
+        params["notify_body"] = str(config.get("Notify", "notify_body"))
+
+    if config.has_option("Notify", "notify_paused_summary"):
+        params["notify_paused_summary"] = str(
+            config.get("Notify", "notify_paused_summary")
+        )
+
+    if config.has_option("Notify", "notify_paused_body"):
+        params["notify_paused_body"] = str(config.get("Notify", "notify_paused_body"))
+
+    if config.has_option("Notify", "notify_timeout"):
+        params["notify_timeout"] = int(config.get("Notify", "notify_timeout"))
+
+    if config.has_option("Notify", "notify_urgency"):
+        params["notify_urgency"] = int(config.get("Notify", "notify_urgency"))
 
     if not music_dir:
         if config.has_option('Library', 'music_dir'):
