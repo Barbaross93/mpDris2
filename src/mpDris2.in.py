@@ -73,12 +73,12 @@ params = {
     "notify_paused": False,
     "cdprev": False,
     # Notify
-    "notify_summary": "",
-    "notify_body": "",
-    "notify_paused_summary": "",
-    "notify_paused_body": "",
-    "notify_urgency": 0,
-    "notify_timeout": -1,
+    "summary": "",
+    "body": "",
+    "paused_summary": "",
+    "paused_body": "",
+    "urgency": 0,
+    "timeout": -1,
 }
 
 defaults = {
@@ -607,18 +607,18 @@ class MPDWrapper(object):
 
     def format_notification(self, meta, text):
         format_strings = {
-            "%album%": meta.get("xesam:album", ""),
-            "%title%": meta.get("xesam:title", ""),
+            "%album%": meta.get("xesam:album", "Unknown Album"),
+            "%title%": meta.get("xesam:title", "Unknown Title"),
             "%id%": meta.get("mpris:trackid", "").split("/")[-1],
-            "%time%": self.convertTimestamp(0, meta.get("mpris:length", "")),
+            "%time%": self.convertTimestamp(0, meta.get("mpris:length", 0)),
             "%position%": self.convertTimestamp(self._position, 0),
             "%date%": meta.get("xesam:contentCreated", ""),
             "%track%": meta.get("xesam:trackNumber", ""),
             "%disc%": meta.get("xesam:discNumber", ""),
-            "%artist%": ", ".join(meta.get("xesam:artist", "")),
-            "%albumartist%": ", ".join(meta.get("xesam:albumArtist", "")),
+            "%artist%": ", ".join(meta.get("xesam:artist", ['Unknown Artist'])),
+            "%albumartist%": ", ".join(meta.get("xesam:albumArtist", [])),
             "%composer%": meta.get("xesam:composer", ""),
-            "%genre%": ", ".join(meta.get("xesam:genre", "")),
+            "%genre%": ", ".join(meta.get("xesam:genre", [])),
             "%file%": meta.get("xesam:url", "").split("/")[-1],
         }
 
@@ -632,8 +632,8 @@ class MPDWrapper(object):
         if "mpris:artUrl" in meta:
             uri = meta["mpris:artUrl"]
 
-        if len(self._params["notify_summary"]) > 0:
-            title = self.format_notification(meta, self._params["notify_summary"])
+        if len(self._params["summary"]) > 0:
+            title = self.format_notification(meta, self._params["summary"])
         else:
             title = "Unknown Title"
             if "xesam:title" in meta:
@@ -641,8 +641,8 @@ class MPDWrapper(object):
             elif "xesam:url" in meta:
                 title = meta["xesam:url"].split("/")[-1]
 
-        if len(self._params["notify_body"]) > 0:
-            body = self.format_notification(meta, self._params["notify_body"])
+        if len(self._params["body"]) > 0:
+            body = self.format_notification(meta, self._params["body"])
         else:
             artist = "Unknown Artist"
             if "xesam:artist" in meta:
@@ -651,14 +651,14 @@ class MPDWrapper(object):
 
         if state == "pause" and self._params["notify_paused"]:
             uri = "media-playback-pause-symbolic"
-            if len(self._params["notify_paused_summary"]) > 0:
+            if len(self._params["paused_summary"]) > 0:
                 title = self.format_notification(
-                    meta, self._params["notify_paused_summary"]
+                    meta, self._params["paused_summary"]
                 )
 
-            if len(self._params["notify_paused_body"]) > 0:
+            if len(self._params["paused_body"]) > 0:
                 body = self.format_notification(
-                    meta, self._params["notify_paused_body"]
+                    meta, self._params["paused_body"]
                 )
             else:
                 body += "(%s)" % ("Paused")
@@ -1026,7 +1026,7 @@ class NotifyWrapper(object):
         
         if self._notification:
             try:
-                self._notification.set_urgency(params['notify_urgency'])
+                self._notification.set_urgency(params['urgency'])
                 self._notification.update(title, body, uri)
                 self._notification.show()
             except GLib.GError as err:
@@ -1502,23 +1502,26 @@ if __name__ == '__main__':
         if config.has_option("Bling", p):
             params[p] = config.getboolean("Bling", p)
 
-    if config.has_option("Notify", "notify_summary"):
-        params["notify_summary"] = config.get("Notify", "notify_summary", raw=True)
+    if config.has_option("Notify", "summary"):
+        params["summary"] = config.get("Notify", "summary", raw=True)
 
-    if config.has_option("Notify", "notify_body"):
-        params["notify_body"] = config.get("Notify", "notify_body", raw=True)
+    if config.has_option("Notify", "body"):
+        params["body"] = config.get("Notify", "body", raw=True)
 
-    if config.has_option("Notify", "notify_paused_summary"):
-        params["notify_paused_summary"] = config.get("Notify", "notify_paused_summary", raw=True)
+    if config.has_option("Notify", "paused_summary"):
+        params["paused_summary"] = config.get("Notify", "paused_summary", raw=True)
 
-    if config.has_option("Notify", "notify_paused_body"):
-        params["notify_paused_body"] = config.get("Notify", "notify_paused_body", raw=True)
+    if config.has_option("Notify", "paused_body"):
+        params["paused_body"] = config.get("Notify", "paused_body", raw=True)
 
-    if config.has_option("Notify", "notify_timeout"):
-        params["notify_timeout"] = int(config.get("Notify", "notify_timeout"))
+    if config.has_option("Notify", "timeout"):
+        params["timeout"] = config.getint("Notify", "timeout")
 
-    if config.has_option("Notify", "notify_urgency"):
-        params["notify_urgency"] = int(config.get("Notify", "notify_urgency"))
+    if config.has_option("Notify", "urgency"):
+        params["urgency"] = config.getint("Notify", "urgency")
+    elif config.has_option("Bling", "notify_urgency"):
+        params["urgency"] = config.getint("Bling", "notify_urgency")
+        logger.warning("Use of 'notify_urgency' is deprecated. Please use 'urgency' under the 'Notify' section.")
 
     if not music_dir:
         if config.has_option('Library', 'music_dir'):

@@ -54,9 +54,9 @@ Restart your session or mpDris2 after changing mpDris2.conf.
     cdprev = True
 
     [Notify]
-    notify_urgency = 0
-    notify_timeout = -1
-    notify_summary =
-    notify_body =
-    notify_paused_summary =
-    notify_paused_body =
+    urgency = 0
+    timeout = -1
+    summary =
+    body =
+    paused_summary =
+    paused_body =
