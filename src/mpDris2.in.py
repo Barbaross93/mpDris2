@@ -585,18 +585,15 @@ class MPDWrapper(object):
                 logger.error("Can't cast value %r to %s" %
                              (value, allowed_tags[key]))
 
-    def convertTimestamp(self, secs, micros):
-        seconds = 0
-        minutes = 0
-        hours = 0
+    def convertTimestamp(self, secs, micros=0):
+        seconds, minutes, hours = 0, 0, 0
+
+        if micros > 0:
+            secs += micros / 1000000
         if secs > 0:
             seconds = int(secs % 60)
             minutes = int((secs / 60) % 60)
-            hours = int((secs / 3600) % 24)
-        elif micros > 0:
-            seconds = int((micros / 1000000) % 60)
-            minutes = int((micros / (1000000 * 60)) % 60)
-            hours = int((micros / (1000000 * 60 * 60)) % 24)
+            hours = int(secs / 3600)
 
         if hours == 0:
             duration = "{}:{:0>2}".format(minutes, seconds)
@@ -606,66 +603,57 @@ class MPDWrapper(object):
         return duration
 
     def format_notification(self, meta, text):
-        format_strings = {
-            "%album%": meta.get("xesam:album", "Unknown Album"),
-            "%title%": meta.get("xesam:title", "Unknown Title"),
-            "%id%": meta.get("mpris:trackid", "").split("/")[-1],
-            "%time%": self.convertTimestamp(0, meta.get("mpris:length", 0)),
-            "%position%": self.convertTimestamp(self._position, 0),
-            "%date%": meta.get("xesam:contentCreated", ""),
-            "%track%": meta.get("xesam:trackNumber", ""),
-            "%disc%": meta.get("xesam:discNumber", ""),
-            "%artist%": ", ".join(meta.get("xesam:artist", ['Unknown Artist'])),
-            "%albumartist%": ", ".join(meta.get("xesam:albumArtist", [])),
-            "%composer%": meta.get("xesam:composer", ""),
-            "%genre%": ", ".join(meta.get("xesam:genre", [])),
-            "%file%": meta.get("xesam:url", "").split("/")[-1],
-        }
+        """format '%property%' in a string for it's actual value"""
 
-        substrings = sorted(format_strings, key=len, reverse=True)
-        regex = re.compile('|'.join(map(re.escape, substrings)))
-        string = regex.sub(lambda match: format_strings[match.group(0)], text)
-        return string
+        format_strings = {
+            "album": meta.get("xesam:album", "Unknown Album"),
+            "title": meta.get("xesam:title", "Unknown Title"),
+            "id": meta.get("mpris:trackid", "").split("/")[-1],
+            "time": self.convertTimestamp(0, meta.get("mpris:length", 0)),
+            "position": self.convertTimestamp(self._position, 0),
+            "date": meta.get("xesam:contentCreated", ""),
+            "track": meta.get("xesam:trackNumber", ""),
+            "disc": meta.get("xesam:discNumber", ""),
+            "artist": ", ".join(meta.get("xesam:artist", ['Unknown Artist'])),
+            "albumartist": ", ".join(meta.get("xesam:albumArtist", [])),
+            "composer": meta.get("xesam:composer", ""),
+            "genre": ", ".join(meta.get("xesam:genre", [])),
+            "file": meta.get("xesam:url", "").split("/")[-1],
+        }
+        return re.sub(r'%([a-z]+)%', r'{\1}', text).format_map(format_strings)
 
     def notify_about_track(self, meta, state="play"):
-        uri = "sound"
-        if "mpris:artUrl" in meta:
-            uri = meta["mpris:artUrl"]
+        uri = meta.get("mpris:artUrl", "sound")
 
-        if len(self._params["summary"]) > 0:
+        if self._params["summary"]:
             title = self.format_notification(meta, self._params["summary"])
+        elif "xesam:title" in meta:
+            title = meta["xesam:title"]
+        elif "xesam:url" in meta:
+            title = meta["xesam:url"].split("/")[-1]
         else:
             title = "Unknown Title"
-            if "xesam:title" in meta:
-                title = meta["xesam:title"]
-            elif "xesam:url" in meta:
-                title = meta["xesam:url"].split("/")[-1]
 
-        if len(self._params["body"]) > 0:
+        if self._params["body"]:
             body = self.format_notification(meta, self._params["body"])
         else:
-            artist = "Unknown Artist"
-            if "xesam:artist" in meta:
-                artist = ", ".join(meta["xesam:artist"])
-                body = _("by %s ") % artist
+            artist = ", ".join(meta.get("xesam:artist", ["Unknown Artist"]))
+            body = _("by %s") % artist
 
-        if state == "pause" and self._params["notify_paused"]:
+        if state == "pause":
+            if not self._params["notify_paused"]:
+                return
             uri = "media-playback-pause-symbolic"
-            if len(self._params["paused_summary"]) > 0:
-                title = self.format_notification(
-                    meta, self._params["paused_summary"]
-                )
 
-            if len(self._params["paused_body"]) > 0:
-                body = self.format_notification(
-                    meta, self._params["paused_body"]
-                )
+            if self._params["paused_summary"]:
+                title = self.format_notification(meta, self._params["paused_summary"])
+
+            if self._params["paused_body"]:
+                body = self.format_notification(meta, self._params["paused_body"])
             else:
-                body += "(%s)" % ("Paused")
+                body += " (Paused)"
 
-            notification.notify(title, body, uri)
-        elif state != "pause":
-            notification.notify(title, body, uri)
+        notification.notify(title, body, uri)
 
     def notify_about_state(self, state):
         if state == 'stop':
@@ -1015,7 +1003,7 @@ class NotifyWrapper(object):
     def notify(self, title, body, uri=''):
         if not self._enabled:
             return
-        
+
         # If we did not yet manage to get a notification service,
         # try again
         if not self._notification:
@@ -1023,7 +1011,7 @@ class NotifyWrapper(object):
             self._notification = self._bootstrap_notifications()
             if self._notification:
                 logger.info('Notification service provider acquired!')
-        
+
         if self._notification:
             try:
                 self._notification.set_urgency(params['urgency'])
